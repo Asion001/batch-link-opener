@@ -10,7 +10,13 @@ const els = {
   stepK: document.getElementById("stepK"),
   stepV: document.getElementById("stepV"),
   openNext: document.getElementById("openNext"),
+  tip: document.getElementById("tip"),
   banner: document.getElementById("banner"),
+  bannerText: document.getElementById("bannerText"),
+  howLead: document.getElementById("howLead"),
+  howSteps: document.getElementById("howSteps"),
+  howOtherList: document.getElementById("howOtherList"),
+  retry: document.getElementById("retry"),
   status: document.getElementById("status"),
   oneByOne: document.getElementById("oneByOne"),
   reset: document.getElementById("reset"),
@@ -28,6 +34,98 @@ const rows = [];
 
 const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
 const firstPending = () => items.findIndex((_, index) => !opened.has(index));
+
+// Where each browser hides its "allow pop-ups and redirects" switch. The right
+// one is shown first; the rest stay a click away, since sniffing is a guess.
+const GUIDES = [
+  {
+    id: "chrome",
+    name: "Chrome, Edge, Brave, Opera",
+    match: (ua) => /chrome|crios|edg|opr/i.test(ua) && !/android/i.test(ua),
+    steps: [
+      "Click the blocked pop-up icon at the right-hand end of the address bar.",
+      "Choose “Always allow pop-ups and redirects from this site”.",
+      "Click Done, then press the button below.",
+    ],
+  },
+  {
+    id: "chrome-android",
+    name: "Chrome on Android",
+    match: (ua) => /android/i.test(ua) && /chrome|crios/i.test(ua),
+    steps: [
+      "Tap “Always show” on the pop-ups blocked bar at the bottom.",
+      "Or: ⋮ menu → Settings → Site settings → Pop-ups and redirects → Allow.",
+      "Then press the button below.",
+    ],
+  },
+  {
+    id: "firefox",
+    name: "Firefox",
+    match: (ua) => /firefox|fxios/i.test(ua),
+    steps: [
+      "Press Options (or Preferences) on the yellow bar at the top of the page.",
+      "Choose “Allow pop-ups for this site”.",
+      "Then press the button below.",
+    ],
+  },
+  {
+    id: "safari",
+    name: "Safari on Mac",
+    match: (ua) => /safari/i.test(ua) && !/chrome|crios|edg|opr|android/i.test(ua) && !/iphone|ipad/i.test(ua),
+    steps: [
+      "Safari menu → Settings → Websites → Pop-up Windows.",
+      "Set this site to Allow.",
+      "Then press the button below.",
+    ],
+  },
+  {
+    id: "safari-ios",
+    name: "Safari on iPhone or iPad",
+    match: (ua) => /iphone|ipad|ipod/i.test(ua),
+    steps: [
+      "Open the Settings app → Apps → Safari.",
+      "Turn “Block Pop-ups” off.",
+      "Come back here and press the button below.",
+    ],
+  },
+];
+
+const FALLBACK = {
+  id: "other",
+  name: "Most browsers",
+  steps: [
+    "Open your browser's site settings for this page — usually the icon at the left or right of the address bar.",
+    "Allow pop-ups and redirects for this site.",
+    "Then press the button below.",
+  ],
+};
+
+function guides() {
+  const ua = navigator.userAgent || "";
+  const mine = GUIDES.find((guide) => guide.match(ua)) ?? FALLBACK;
+  return { mine, others: [...GUIDES, FALLBACK].filter((guide) => guide.id !== mine.id) };
+}
+
+function renderGuide() {
+  const { mine, others } = guides();
+  els.howLead.textContent = `To open them all in one press, allow pop-ups for this site — in ${mine.name}:`;
+
+  els.howSteps.replaceChildren();
+  for (const step of mine.steps) {
+    const li = document.createElement("li");
+    li.textContent = step;
+    els.howSteps.append(li);
+  }
+
+  els.howOtherList.replaceChildren();
+  for (const guide of others) {
+    const term = document.createElement("dt");
+    term.textContent = guide.name;
+    const detail = document.createElement("dd");
+    detail.textContent = guide.steps.join(" ");
+    els.howOtherList.append(term, detail);
+  }
+}
 
 /**
  * Opens one link in a new tab.
@@ -108,6 +206,9 @@ function render() {
     row.state.textContent = isDone ? "opened" : stepping && index === pending ? "next" : "";
   }
 
+  // A quiet heads-up before the first press; the banner takes over afterwards.
+  els.tip.hidden = done > 0 || total < 2 || stepping || !els.banner.hidden;
+
   els.openAll.disabled = pending === -1;
   // While stepping, the one-at-a-time button is the main action.
   els.openAll.classList.toggle("primary", !stepping);
@@ -136,32 +237,38 @@ function render() {
   }
 }
 
-function showBanner(text) {
-  els.banner.textContent = text;
+/** @param {boolean} withGuide show the "how to allow pop-ups" instructions. */
+function showBanner(text, withGuide = true) {
+  els.bannerText.textContent = text;
   els.banner.hidden = false;
+  if (withGuide) renderGuide();
 }
 
-els.openAll.addEventListener("click", () => {
+/** Opens everything still pending, stopping at the first refusal. */
+function openRemaining() {
   els.banner.hidden = true;
-  let blockedAt = -1;
+  const before = opened.size;
+  let blocked = false;
   for (const [index] of items.entries()) {
     if (opened.has(index)) continue;
     if (!openTab(items[index].url)) {
-      blockedAt = index;
+      blocked = true;
       break;
     }
     opened.add(index);
   }
-  if (blockedAt !== -1) {
+  if (blocked) {
     stepping = true;
+    const justOpened = opened.size - before;
     showBanner(
-      opened.size
-        ? `Your browser blocked the rest after ${plural(opened.size, "tab")}. Keep pressing the button below to open them one at a time — each press counts as your own click, which browsers always allow.`
-        : "Your browser blocked the pop-ups. Use the button below to open them one at a time — each press counts as your own click, which browsers always allow.",
+      `${justOpened ? `Your browser blocked the rest after ${plural(justOpened, "tab")}.` : "Your browser blocked the pop-ups."} Allow pop-ups for this site to open them all in one press — or use the one-at-a-time button further down, which browsers always allow.`,
     );
   }
   render();
-});
+}
+
+els.openAll.addEventListener("click", openRemaining);
+els.retry.addEventListener("click", openRemaining);
 
 els.openNext.addEventListener("click", () => {
   const index = firstPending();
@@ -170,7 +277,7 @@ els.openNext.addEventListener("click", () => {
     opened.add(index);
     els.banner.hidden = true;
   } else {
-    showBanner("That tab was blocked too. Allow pop-ups for this site, or use the link in the list below.");
+    showBanner("That one was blocked too.");
   }
   render();
 });
