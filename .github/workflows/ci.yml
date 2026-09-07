@@ -3,6 +3,8 @@ name: CI
 on:
   push:
   pull_request:
+  # Lets you deploy any branch by hand from the Actions tab.
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -16,9 +18,9 @@ jobs:
     name: Test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -34,14 +36,17 @@ jobs:
   deploy:
     name: Deploy
     needs: test
-    # Only the default branch goes live. Pull requests stop at the test job,
-    # which is also what forks get, since secrets are not exposed to them.
-    if: github.event_name == 'push' && github.ref_name == github.event.repository.default_branch
+    # main goes live, whatever the repository's default branch happens to be.
+    # Pull requests stop at the test job, which is also what forks get, since
+    # secrets are not exposed to them.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm

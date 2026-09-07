@@ -75,8 +75,9 @@ Add it under **Settings → Secrets and variables → Actions → New repository
 - **every push and pull request** runs the unit tests and `wrangler deploy --dry-run`, which
   type-checks the Cloudflare config and the asset directory without needing any credentials — so
   pull requests, forks included, are fully checked without the secret;
-- **pushes to the default branch** deploy with `wrangler deploy` and put the resulting
-  `*.workers.dev` URL in the job summary.
+- **pushes to `main`** deploy with `wrangler deploy` and put the resulting `*.workers.dev` URL in
+  the job summary — regardless of which branch GitHub considers the default;
+- **Actions → CI → Run workflow** deploys whichever branch you pick, by hand.
 
 To deploy by hand instead: `npm run deploy`.
 
