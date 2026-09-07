@@ -1,0 +1,13 @@
+{
+  "name": "batch-link-opener",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Turn a list of links into one shareable link that opens them all.",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}

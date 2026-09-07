@@ -1,0 +1,303 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Open batch · Batch Link Opener</title>
+<meta name="robots" content="noindex">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/assets/style.css">
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <a class="brand" href="/">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true">
+        <path d="M10 13.5a4 4 0 0 0 5.7.4l2.6-2.6a4 4 0 0 0-5.7-5.7l-1.5 1.5"/>
+        <path d="M14 10.5a4 4 0 0 0-5.7-.4l-2.6 2.6a4 4 0 1 0 5.7 5.7l1.5-1.5"/>
+      </svg>
+      Batch Link Opener
+    </a>
+    <h1 id="heading">Loading…</h1>
+    <p class="lede" id="sub"></p>
+  </header>
+
+  <main>
+    <section class="card" id="panel" hidden>
+      <button type="button" class="primary big" id="openAll">Open all tabs</button>
+      <div class="bar"><i id="bar"></i></div>
+
+      <div class="banner" id="banner" hidden></div>
+
+      <div id="stepper" hidden>
+        <div class="next">
+          <div class="k" id="stepK">Next</div>
+          <div class="v" id="stepV"></div>
+        </div>
+        <button type="button" class="primary big" id="openNext">Open next</button>
+      </div>
+
+      <p class="status" id="status"></p>
+      <div class="row" style="margin-top:12px">
+        <button type="button" id="oneByOne">Open one by one</button>
+        <button type="button" id="reset">Reset to first</button>
+        <button type="button" id="copyAll">Copy all links</button>
+        <a class="btn" id="edit" href="/">Edit this list</a>
+      </div>
+
+      <ul class="list" id="list"></ul>
+    </section>
+
+    <section class="card" id="error" hidden>
+      <p id="errorText" style="margin:0 0 12px"></p>
+      <a class="btn primary" href="/">Build a new batch</a>
+    </section>
+  </main>
+
+  <footer>Nothing here was sent anywhere — the list travels inside this link.</footer>
+</div>
+
+<script type="module">
+import { decode, expandPayload } from "/assets/codec.js";
+
+const els = {
+  heading: document.getElementById("heading"),
+  sub: document.getElementById("sub"),
+  panel: document.getElementById("panel"),
+  openAll: document.getElementById("openAll"),
+  bar: document.getElementById("bar"),
+  stepper: document.getElementById("stepper"),
+  stepK: document.getElementById("stepK"),
+  stepV: document.getElementById("stepV"),
+  openNext: document.getElementById("openNext"),
+  banner: document.getElementById("banner"),
+  status: document.getElementById("status"),
+  oneByOne: document.getElementById("oneByOne"),
+  reset: document.getElementById("reset"),
+  copyAll: document.getElementById("copyAll"),
+  edit: document.getElementById("edit"),
+  list: document.getElementById("list"),
+  error: document.getElementById("error"),
+  errorText: document.getElementById("errorText"),
+};
+
+let items = [];
+const opened = new Set();
+let stepping = false;
+const rows = [];
+
+const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+const firstPending = () => items.findIndex((_, index) => !opened.has(index));
+
+/**
+ * Opens one link in a new tab.
+ * `noopener` is applied by clearing `opener` afterwards rather than through the
+ * features string, because that form makes window.open() always return null and
+ * we need its return value to tell a blocked popup from a real one.
+ */
+function openTab(url) {
+  let tab = null;
+  try {
+    tab = window.open(url, "_blank");
+  } catch {
+    return false;
+  }
+  if (!tab) return false;
+  try {
+    tab.opener = null;
+  } catch {
+    /* cross-origin window: nothing to clear */
+  }
+  return true;
+}
+
+function markOpened(index) {
+  opened.add(index);
+  render();
+}
+
+function buildList() {
+  els.list.replaceChildren();
+  rows.length = 0;
+  for (const [index, item] of items.entries()) {
+    const li = document.createElement("li");
+
+    const num = document.createElement("span");
+    num.className = "num";
+    num.textContent = index + 1;
+
+    const body = document.createElement("span");
+    if (item.label) {
+      const label = document.createElement("span");
+      label.className = "label";
+      label.textContent = item.label;
+      body.append(label);
+    }
+    const url = document.createElement("span");
+    url.className = "url";
+    const anchor = document.createElement("a");
+    anchor.href = item.url;
+    anchor.target = "_blank";
+    anchor.rel = "noopener noreferrer";
+    anchor.textContent = item.url;
+    anchor.addEventListener("click", () => markOpened(index));
+    url.append(anchor);
+    body.append(url);
+
+    const state = document.createElement("span");
+    state.className = "state";
+
+    li.append(num, body, state);
+    els.list.append(li);
+    rows.push({ li, state });
+  }
+}
+
+function render() {
+  const done = opened.size;
+  const total = items.length;
+  const pending = firstPending();
+
+  els.bar.style.width = total ? `${(done / total) * 100}%` : "0%";
+  els.status.innerHTML = `<b>${done}</b> of <b>${total}</b> opened`;
+
+  for (const [index, row] of rows.entries()) {
+    const isDone = opened.has(index);
+    row.li.classList.toggle("done", isDone);
+    row.li.classList.toggle("current", stepping && index === pending);
+    row.state.textContent = isDone ? "opened" : stepping && index === pending ? "next" : "";
+  }
+
+  els.openAll.disabled = pending === -1;
+  // While stepping, the one-at-a-time button is the main action.
+  els.openAll.classList.toggle("primary", !stepping);
+  els.openAll.textContent = pending === -1
+    ? "Everything is open"
+    : done
+      ? `Open the remaining ${plural(total - done, "tab")}`
+      : `Open all ${plural(total, "tab")}`;
+  els.oneByOne.disabled = stepping || pending === -1;
+  els.reset.disabled = done === 0;
+
+  els.stepper.hidden = !stepping;
+  if (stepping) {
+    if (pending === -1) {
+      els.stepK.textContent = "Done";
+      els.stepV.textContent = `All ${plural(total, "link")} opened.`;
+      els.openNext.disabled = true;
+      els.openNext.textContent = "Nothing left to open";
+    } else {
+      const item = items[pending];
+      els.stepK.textContent = `Next · ${pending + 1} of ${total}`;
+      els.stepV.textContent = item.label ? `${item.label} — ${item.url}` : item.url;
+      els.openNext.disabled = false;
+      els.openNext.textContent = `Open link ${pending + 1} of ${total}`;
+    }
+  }
+}
+
+function showBanner(text) {
+  els.banner.textContent = text;
+  els.banner.hidden = false;
+}
+
+els.openAll.addEventListener("click", () => {
+  els.banner.hidden = true;
+  let blockedAt = -1;
+  for (const [index] of items.entries()) {
+    if (opened.has(index)) continue;
+    if (!openTab(items[index].url)) {
+      blockedAt = index;
+      break;
+    }
+    opened.add(index);
+  }
+  if (blockedAt !== -1) {
+    stepping = true;
+    showBanner(
+      opened.size
+        ? `Your browser blocked the rest after ${plural(opened.size, "tab")}. Keep pressing the button below to open them one at a time — each press counts as your own click, which browsers always allow.`
+        : "Your browser blocked the pop-ups. Use the button below to open them one at a time — each press counts as your own click, which browsers always allow.",
+    );
+  }
+  render();
+});
+
+els.openNext.addEventListener("click", () => {
+  const index = firstPending();
+  if (index === -1) return;
+  if (openTab(items[index].url)) {
+    opened.add(index);
+    els.banner.hidden = true;
+  } else {
+    showBanner("That tab was blocked too. Allow pop-ups for this site, or use the link in the list below.");
+  }
+  render();
+});
+
+els.oneByOne.addEventListener("click", () => {
+  stepping = true;
+  els.banner.hidden = true;
+  render();
+  els.openNext.focus();
+});
+
+els.reset.addEventListener("click", () => {
+  opened.clear();
+  els.banner.hidden = true;
+  render();
+});
+
+let copyResetTimer;
+els.copyAll.addEventListener("click", async () => {
+  const text = items.map((item) => item.url).join("\n");
+  try {
+    await navigator.clipboard.writeText(text);
+    els.copyAll.textContent = "Copied";
+  } catch {
+    els.copyAll.textContent = "Copy failed";
+  }
+  clearTimeout(copyResetTimer);
+  copyResetTimer = setTimeout(() => (els.copyAll.textContent = "Copy all links"), 1600);
+});
+
+function fail(message) {
+  els.errorText.textContent = message;
+  els.error.hidden = false;
+  els.heading.textContent = "Nothing to open";
+  els.sub.textContent = "";
+}
+
+async function load() {
+  if (!location.hash || location.hash.length < 3) {
+    fail("This link carries no batch. Build one first.");
+    return;
+  }
+  let batch;
+  try {
+    batch = expandPayload(await decode(location.hash));
+  } catch (error) {
+    fail(`This batch could not be read — ${error.message}`);
+    return;
+  }
+  items = batch.items;
+  if (!items.length) {
+    fail("This batch is empty.");
+    return;
+  }
+
+  els.heading.textContent = batch.title || `${plural(items.length, "link")} ready`;
+  els.sub.textContent = batch.title ? `${plural(items.length, "link")} ready to open.` : "";
+  document.title = `${batch.title || plural(items.length, "link")} · Batch Link Opener`;
+  els.edit.href = `/${location.hash}`;
+
+  buildList();
+  els.panel.hidden = false;
+  render();
+}
+
+await load();
+</script>
+</body>
+</html>
