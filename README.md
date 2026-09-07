@@ -55,6 +55,13 @@ others stay one click away, because user-agent sniffing is a guess), and an **I 
 open the rest** button that picks up where the block stopped. A quieter version of the same
 reminder sits under the main button before the first press.
 
+**Open the tabs automatically next time I follow a batch link** is an opt-in checkbox on the opener
+page, off by default. It is stored in `localStorage` under `blo:auto-open`, so it lives in that one
+browser and never travels inside a batch link — someone you share a link with is unaffected by your
+setting. An automatic open carries no click, so browsers permit it only where pop-ups are already
+allowed for the site; when they refuse, the same banner appears and the top button still works.
+`localStorage` throwing (private mode, storage disabled) is treated as "off" rather than an error.
+
 ## Run it locally
 
 ```sh
