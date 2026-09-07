@@ -1,0 +1,12 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "batch-link-opener",
+  "compatibility_date": "2026-09-01",
+  // Static assets only — there is no Worker script, because the whole batch
+  // lives in the URL fragment and never reaches the server.
+  "assets": {
+    "directory": "./public",
+    "html_handling": "auto-trailing-slash",
+    "not_found_handling": "404-page"
+  }
+}

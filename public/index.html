@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Batch Link Opener</title>
+<meta name="description" content="Turn a list of links into one shareable link that opens them all in new tabs.">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/assets/style.css">
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <a class="brand" href="/">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true">
+        <path d="M10 13.5a4 4 0 0 0 5.7.4l2.6-2.6a4 4 0 0 0-5.7-5.7l-1.5 1.5"/>
+        <path d="M14 10.5a4 4 0 0 0-5.7-.4l-2.6 2.6a4 4 0 1 0 5.7 5.7l1.5-1.5"/>
+      </svg>
+      Batch Link Opener
+    </a>
+    <h1>One link that opens all of them.</h1>
+    <p class="lede">Paste your list — merge requests, tickets, dashboards. Every line that contains a link is picked up, the rest of the line becomes its label. You get a single URL to share; opening it opens the whole batch.</p>
+  </header>
+
+  <main class="card">
+    <label class="field">
+      <span>Your list</span>
+      <textarea id="input" spellcheck="false" placeholder=":flag-gr: https://gitlab.com/acme/web/-/merge_requests/1421
+:flag-ua: https://gitlab.com/acme/web/-/merge_requests/1422
+api — https://gitlab.com/acme/api/-/merge_requests/318"></textarea>
+    </label>
+
+    <div class="row between">
+      <label class="field grow" style="margin:0">
+        <span>Batch name <span style="text-transform:none;font-weight:400">(optional)</span></span>
+        <input type="text" id="title" placeholder="Release 24.9" maxlength="120">
+      </label>
+      <label class="check"><input type="checkbox" id="dedupe" checked> Skip duplicate links</label>
+    </div>
+
+    <p class="status" id="status">Nothing to open yet.</p>
+    <ul class="list" id="preview"></ul>
+
+    <div class="out" id="out" hidden>
+      <div class="row">
+        <input type="text" id="link" class="grow" readonly aria-label="Shareable link">
+        <button type="button" class="primary" id="copy">Copy link</button>
+        <a class="btn" id="open" href="#">Open it</a>
+      </div>
+      <p class="hint" id="hint"></p>
+    </div>
+  </main>
+
+  <footer>The list lives in the link itself, after the <code>#</code> — it never reaches a server.</footer>
+</div>
+
+<script type="module">
+import { parseLines, buildPayload, encode, decode, expandPayload } from "/assets/codec.js";
+
+const els = {
+  input: document.getElementById("input"),
+  title: document.getElementById("title"),
+  dedupe: document.getElementById("dedupe"),
+  status: document.getElementById("status"),
+  preview: document.getElementById("preview"),
+  out: document.getElementById("out"),
+  link: document.getElementById("link"),
+  copy: document.getElementById("copy"),
+  open: document.getElementById("open"),
+  hint: document.getElementById("hint"),
+};
+
+const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+
+function renderPreview(items) {
+  els.preview.replaceChildren();
+  for (const [index, item] of items.entries()) {
+    const li = document.createElement("li");
+    const num = document.createElement("span");
+    num.className = "num";
+    num.textContent = index + 1;
+    const body = document.createElement("span");
+    if (item.label) {
+      const label = document.createElement("span");
+      label.className = "label";
+      label.textContent = item.label;
+      body.append(label);
+    }
+    const url = document.createElement("span");
+    url.className = "url";
+    url.textContent = item.url;
+    body.append(url);
+    li.append(num, body, document.createElement("span"));
+    els.preview.append(li);
+  }
+}
+
+let renderToken = 0;
+
+async function render() {
+  const token = ++renderToken;
+  const { items, skipped, duplicates } = parseLines(els.input.value, { dedupe: els.dedupe.checked });
+
+  const notes = [];
+  if (duplicates) notes.push(`${plural(duplicates, "duplicate")} skipped`);
+  if (skipped) notes.push(`${plural(skipped, "line")} without a link ignored`);
+  els.status.innerHTML = items.length
+    ? `<b>${items.length}</b> link${items.length === 1 ? "" : "s"} found${notes.length ? " · " + notes.join(" · ") : ""}`
+    : "Nothing to open yet.";
+
+  renderPreview(items);
+
+  if (!items.length) {
+    els.out.hidden = true;
+    return;
+  }
+
+  const fragment = await encode(buildPayload({ title: els.title.value, items }));
+  if (token !== renderToken) return;
+
+  const url = `${location.origin}/open#${fragment}`;
+  els.link.value = url;
+  els.open.href = `/open#${fragment}`;
+  els.hint.textContent = `${url.length} characters long${url.length > 6000 ? " — long enough that some chat apps may cut it; consider splitting the batch." : "."}`;
+  els.out.hidden = false;
+}
+
+let copyResetTimer;
+els.copy.addEventListener("click", async () => {
+  try {
+    await navigator.clipboard.writeText(els.link.value);
+  } catch {
+    els.link.select();
+    document.execCommand("copy");
+  }
+  els.copy.textContent = "Copied";
+  clearTimeout(copyResetTimer);
+  copyResetTimer = setTimeout(() => (els.copy.textContent = "Copy link"), 1600);
+});
+
+for (const el of [els.input, els.title]) el.addEventListener("input", render);
+els.dedupe.addEventListener("change", render);
+
+// A batch link dropped on the editor loads back into the textarea, so an
+// existing batch can be edited and re-shared.
+async function loadFromHash() {
+  if (!location.hash || location.hash.length < 3) return false;
+  try {
+    const { title, items } = expandPayload(await decode(location.hash));
+    els.title.value = title;
+    els.input.value = items.map((item) => (item.label ? `${item.label} ${item.url}` : item.url)).join("\n");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+await loadFromHash();
+await render();
+</script>
+</body>
+</html>
