@@ -2,10 +2,13 @@
   "name": "batch-link-opener",
   "version": "1.0.0",
   "private": true,
+  "type": "module",
   "description": "Turn a list of links into one shareable link that opens them all.",
   "scripts": {
     "dev": "wrangler dev",
-    "deploy": "wrangler deploy"
+    "deploy": "wrangler deploy",
+    "test": "node --test test/*.test.mjs",
+    "check": "wrangler deploy --dry-run"
   },
   "devDependencies": {
     "wrangler": "^4.0.0"
