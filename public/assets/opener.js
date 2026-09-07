@@ -17,6 +17,7 @@ const els = {
   howSteps: document.getElementById("howSteps"),
   howOtherList: document.getElementById("howOtherList"),
   retry: document.getElementById("retry"),
+  auto: document.getElementById("auto"),
   status: document.getElementById("status"),
   oneByOne: document.getElementById("oneByOne"),
   reset: document.getElementById("reset"),
@@ -34,6 +35,29 @@ const rows = [];
 
 const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
 const firstPending = () => items.findIndex((_, index) => !opened.has(index));
+
+// Opt-in, off by default, and kept in this browser only — the batch link itself
+// never carries it. An automatic open has no click behind it, so it only gets
+// through where the visitor has allowed pop-ups for the site; when it does not,
+// the usual banner explains how to fix that.
+const AUTO_KEY = "blo:auto-open";
+
+function readAuto() {
+  try {
+    return localStorage.getItem(AUTO_KEY) === "1";
+  } catch {
+    return false; // private mode, or storage blocked outright
+  }
+}
+
+function writeAuto(on) {
+  try {
+    if (on) localStorage.setItem(AUTO_KEY, "1");
+    else localStorage.removeItem(AUTO_KEY);
+  } catch {
+    /* the checkbox still works for this visit */
+  }
+}
 
 // Where each browser hides its "allow pop-ups and redirects" switch. The right
 // one is shown first; the rest stay a click away, since sniffing is a guess.
@@ -244,8 +268,11 @@ function showBanner(text, withGuide = true) {
   if (withGuide) renderGuide();
 }
 
-/** Opens everything still pending, stopping at the first refusal. */
-function openRemaining() {
+/**
+ * Opens everything still pending, stopping at the first refusal.
+ * @param {boolean} automatic true when it runs on load rather than from a click.
+ */
+function openRemaining(automatic = false) {
   els.banner.hidden = true;
   const before = opened.size;
   let blocked = false;
@@ -260,15 +287,22 @@ function openRemaining() {
   if (blocked) {
     stepping = true;
     const justOpened = opened.size - before;
+    const what = justOpened
+      ? `Your browser blocked the rest after ${plural(justOpened, "tab")}.`
+      : "Your browser blocked the pop-ups.";
     showBanner(
-      `${justOpened ? `Your browser blocked the rest after ${plural(justOpened, "tab")}.` : "Your browser blocked the pop-ups."} Allow pop-ups for this site to open them all in one press — or use the one-at-a-time button further down, which browsers always allow.`,
+      automatic
+        ? `${what} Opening automatically only works where pop-ups are allowed for this site — otherwise press the button at the top, which counts as your own click.`
+        : `${what} Allow pop-ups for this site to open them all in one press — or use the one-at-a-time button further down, which browsers always allow.`,
     );
   }
   render();
 }
 
-els.openAll.addEventListener("click", openRemaining);
-els.retry.addEventListener("click", openRemaining);
+els.openAll.addEventListener("click", () => openRemaining());
+els.retry.addEventListener("click", () => openRemaining());
+
+els.auto.addEventListener("change", () => writeAuto(els.auto.checked));
 
 els.openNext.addEventListener("click", () => {
   const index = firstPending();
@@ -339,8 +373,11 @@ async function load() {
   els.edit.href = `/${location.hash}`;
 
   buildList();
+  els.auto.checked = readAuto();
   els.panel.hidden = false;
   render();
+
+  if (els.auto.checked) openRemaining(true);
 }
 
 await load();
