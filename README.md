@@ -49,6 +49,12 @@ and switches to step mode showing `Open link 3 of 12`, a progress bar, the next 
 **Reset to first**. Each press is its own user gesture, which every browser allows, so the batch
 always gets through. Every link is also a plain anchor in the list below.
 
+Since one press beats twelve, the block banner also says how to lift it: it shows the
+"allow pop-ups and redirects for this site" steps for the browser it thinks you are using (the
+others stay one click away, because user-agent sniffing is a guess), and an **I allowed them —
+open the rest** button that picks up where the block stopped. A quieter version of the same
+reminder sits under the main button before the first press.
+
 ## Run it locally
 
 ```sh

@@ -28,7 +28,22 @@
       <button type="button" class="primary big" id="openAll">Open all tabs</button>
       <div class="bar"><i id="bar"></i></div>
 
-      <div class="banner" id="banner" hidden></div>
+      <p class="tip" id="tip" hidden>
+        Opening several tabs at once needs pop-ups allowed for this site.
+      </p>
+
+      <div class="banner" id="banner" hidden>
+        <p class="banner-text" id="bannerText"></p>
+        <div class="how" id="how">
+          <p class="how-lead" id="howLead"></p>
+          <ol class="how-steps" id="howSteps"></ol>
+          <details id="howOther">
+            <summary>Another browser?</summary>
+            <dl class="how-other" id="howOtherList"></dl>
+          </details>
+        </div>
+        <button type="button" class="primary" id="retry">I allowed them — open the rest</button>
+      </div>
 
       <div id="stepper" hidden>
         <div class="next">
