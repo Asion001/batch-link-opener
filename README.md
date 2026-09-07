@@ -54,20 +54,44 @@ always gets through. Every link is also a plain anchor in the list below.
 ```sh
 npm install
 npm run dev      # wrangler dev
+npm test         # unit tests for the parser and the fragment codec
 ```
 
 Or serve `public/` with any static file server — there is no build step.
 
-## Deploy to Cloudflare
+## Deploy
 
-```sh
-npm run deploy   # wrangler deploy
-```
+Deployment is automatic. **The only thing to set up is one repository secret:**
+
+| Secret | Required | What it is |
+| --- | --- | --- |
+| `CLOUDFLARE_API_TOKEN` | yes | A Cloudflare API token created from the **Edit Cloudflare Workers** template (Workers Scripts: Edit + Account Settings: Read). |
+| `CLOUDFLARE_ACCOUNT_ID` | no | Only needed if the token can see more than one Cloudflare account; otherwise Wrangler picks the single account the token belongs to. |
+
+Add it under **Settings → Secrets and variables → Actions → New repository secret**.
+
+`.github/workflows/ci.yml` then does the rest:
+
+- **every push and pull request** runs the unit tests and `wrangler deploy --dry-run`, which
+  type-checks the Cloudflare config and the asset directory without needing any credentials — so
+  pull requests, forks included, are fully checked without the secret;
+- **pushes to the default branch** deploy with `wrangler deploy` and put the resulting
+  `*.workers.dev` URL in the job summary.
+
+To deploy by hand instead: `npm run deploy`.
 
 `wrangler.jsonc` configures [Workers static assets](https://developers.cloudflare.com/workers/static-assets/)
 with `directory: ./public` and no Worker script, because nothing needs to run server-side. The same
 `public/` directory also deploys as-is to Cloudflare Pages (`wrangler pages deploy public`), where
 `public/_headers` supplies the security headers.
+
+### Custom domain
+
+Add a route to `wrangler.jsonc` once the DNS zone is on Cloudflare:
+
+```jsonc
+"routes": [{ "pattern": "links.example.com", "custom_domain": true }]
+```
 
 ## Layout
 
@@ -79,5 +103,7 @@ public/
   _headers            security headers + asset caching
   assets/codec.js     link parsing and fragment encode/decode
   assets/style.css
+test/codec.test.mjs   parser and codec tests (node --test, no dependencies)
+.github/workflows/ci.yml
 wrangler.jsonc
 ```
