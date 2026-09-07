@@ -80,6 +80,15 @@ Add it under **Settings → Secrets and variables → Actions → New repository
 
 To deploy by hand instead: `npm run deploy`.
 
+### Content-Security-Policy
+
+`public/_headers` sends `default-src 'none'` with `script-src 'self'` and `style-src 'self'` — no
+`unsafe-inline`. So the pages keep **all** JavaScript and CSS in `public/assets/`: an inline
+`<script>` body, a `style="…"` attribute or an `onclick=` handler would be blocked in the browser
+while still looking fine behind a plain static file server, which does not apply `_headers` at all.
+`test/csp.test.mjs` fails the build on any of those, and `npm run dev` (Wrangler) serves the real
+headers, so check there rather than with a bare file server.
+
 `wrangler.jsonc` configures [Workers static assets](https://developers.cloudflare.com/workers/static-assets/)
 with `directory: ./public` and no Worker script, because nothing needs to run server-side. The same
 `public/` directory also deploys as-is to Cloudflare Pages (`wrangler pages deploy public`), where
@@ -102,8 +111,11 @@ public/
   404.html
   _headers            security headers + asset caching
   assets/codec.js     link parsing and fragment encode/decode
+  assets/editor.js    the editor page's script
+  assets/opener.js    the opener page's script
   assets/style.css
 test/codec.test.mjs   parser and codec tests (node --test, no dependencies)
+test/csp.test.mjs     keeps the pages loadable under their own CSP
 .github/workflows/ci.yml
 wrangler.jsonc
 ```
