@@ -41,6 +41,55 @@ https://<host>/open#v1.<base64url(deflate-raw(json))>
 `t` (title) and `p` (shared prefix) are optional; an item is either `"tail"` or `["tail", "label"]`.
 Anything that does not expand to an `http(s)` URL is dropped when the batch is read.
 
+#### Plain-list forms
+
+Two more forms carry the list as plain text instead of JSON, so another tool can build a link with
+nothing but base64 or URL-encoding:
+
+```
+https://<host>/open#b1.<base64(text)>
+https://<host>/open#u1.<encodeURIComponent(text)>
+```
+
+`text` is UTF-8, one link per line, read by the same parser as the editor: the link is picked out
+of the line, the rest of the line is its label, lines without a link are ignored and duplicates
+are skipped. If the first line starts with `# `, it is the batch title rather than a link line.
+As with the JSON forms, only `http(s)` links are kept.
+
+```
+# Release 24.9
+https://gitlab.com/acme/web/-/merge_requests/1500 see
+:rocket: https://gitlab.com/acme/web/-/merge_requests/1501
+```
+
+- **`b1`** accepts the standard (`+/`) and the URL-safe (`-_`) alphabet, with or without `=`
+  padding, so the output of `base64 -w0` works as it is.
+- **`u1`** is decoded with `decodeURIComponent`. Characters a browser leaves unencoded in a
+  fragment are fine, and a stray or malformed `%` is kept literally instead of breaking the link.
+  Line breaks do have to be encoded (`%0A`), because browsers strip raw ones from a URL.
+
+Neither is compressed, so these links are longer than `v1`. The editor can produce them too — pick
+**Base64 list** or **URL-encoded list** under *Encoding* — and opening one on the home page loads
+it back into the editor with that encoding selected.
+
+### Generating links from other tools
+
+```sh
+# bash: an array of links (GNU base64; on macOS use `base64 | tr -d '\n'`)
+echo "https://host/open#b1.$(printf '%s\n' "${links[@]}" | base64 -w0)"
+
+# a file with one link per line, optionally starting with "# Title"
+echo "https://host/open#b1.$(base64 -w0 < links.txt)"
+
+# Python, URL-encoded
+python3 -c 'import sys,urllib.parse;print("https://host/open#u1."+urllib.parse.quote(sys.stdin.read(),safe=""))' < links.txt
+```
+
+```js
+// JavaScript
+const link = `https://host/open#u1.${encodeURIComponent(lines.join("\n"))}`;
+```
+
 ## Pop-up handling
 
 Pressing **Open all** calls `window.open` once per link inside the click handler. Browsers allow

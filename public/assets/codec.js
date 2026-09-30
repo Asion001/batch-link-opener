@@ -3,9 +3,18 @@
 // A batch lives entirely in the URL fragment, so nothing is ever sent to a
 // server: `#v1.<base64url(deflate-raw(json))>`, falling back to `#j1.<base64url(json)>`
 // when the browser has no CompressionStream.
+//
+// Two more forms carry the list as plain text, one link per line, so other
+// tools can build a link without deflate or JSON: `#b1.<base64(text)>` and
+// `#u1.<encodeURIComponent(text)>`.
 
 const V_DEFLATE = "v1";
 const V_PLAIN = "j1";
+const V_BASE64 = "b1";
+const V_URI = "u1";
+const VERSIONS = [V_DEFLATE, V_PLAIN, V_BASE64, V_URI];
+
+const TITLE_MARK = "# ";
 
 const URL_RE = /https?:\/\/[^\s<>"'`\\]+/i;
 const EMOJI_CODE_END = /:[a-z0-9_+-]+:$/i;
@@ -107,6 +116,30 @@ export function expandPayload(payload) {
   return { title: typeof payload?.t === "string" ? payload.t : "", items };
 }
 
+/** Plain-text form of a batch: an optional `# title` line, then one link per line. */
+export function toListText({ title = "", items = [] }) {
+  const lines = items.map((item) => (item.label ? `${item.url} ${item.label}` : item.url));
+  if (title.trim()) lines.unshift(TITLE_MARK + title.trim());
+  return lines.join("\n");
+}
+
+/** Reads the plain-text form with the editor's own line parser, into the wire shape. */
+export function fromListText(text) {
+  const lines = String(text).split(/\r?\n/);
+  const first = lines.findIndex((line) => line.trim());
+  let title = "";
+  if (first !== -1 && lines[first].startsWith(TITLE_MARK)) {
+    title = lines[first].slice(TITLE_MARK.length).trim();
+    lines.splice(0, first + 1);
+  }
+  const { items } = parseLines(lines.join("\n"));
+  return {
+    v: 1,
+    ...(title ? { t: title } : {}),
+    i: items.map((item) => (item.label ? [item.url, item.label] : item.url)),
+  };
+}
+
 function toBase64Url(bytes) {
   let binary = "";
   for (let i = 0; i < bytes.length; i += 0x8000) {
@@ -123,9 +156,68 @@ function fromBase64Url(text) {
   return bytes;
 }
 
+/**
+ * decodeURIComponent that never throws: a `%` that does not start a valid
+ * escape, or escapes that are not UTF-8, are left as they are, and everything
+ * around them is still decoded.
+ */
+function decodeUriLoose(text) {
+  return text.replace(/(?:%[0-9a-f]{2})+/gi, (run) => {
+    try {
+      return decodeURIComponent(run);
+    } catch {
+      // Salvage the run one character at a time: a UTF-8 character is one to
+      // four escapes, three characters each.
+      let out = "";
+      for (let i = 0; i < run.length; ) {
+        let size = 12;
+        for (; size > 0; size -= 3) {
+          try {
+            out += decodeURIComponent(run.slice(i, i + size));
+            break;
+          } catch {
+            /* try a shorter sequence */
+          }
+        }
+        if (!size) out += run.slice(i, i + (size = 3));
+        i += size;
+      }
+      return out;
+    }
+  });
+}
+
+/** encodeURIComponent, plus the few characters chat apps like to cut a link at. */
+function encodeUri(text) {
+  const safe = typeof text.toWellFormed === "function" ? text.toWellFormed() : text;
+  return encodeURIComponent(safe).replace(/[!'()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
+}
+
+/** Standard or URL-safe alphabet, padded or not, even if something escaped the `=`. */
+function fromBase64Any(text) {
+  return fromBase64Url(decodeUriLoose(text).replace(/\s+/g, "").replace(/=+$/, ""));
+}
+
 async function pipe(bytes, stream) {
   const response = new Response(new Blob([bytes]).stream().pipeThrough(stream));
   return new Uint8Array(await response.arrayBuffer());
+}
+
+/**
+ * A batch as one of the plain-list fragments.
+ * @param {"b1" | "u1"} format
+ * @returns {string} the fragment token, without the leading `#`.
+ */
+export function encodeList(batch, format) {
+  const text = toListText(batch);
+  if (format === V_URI) return `${V_URI}.${encodeUri(text)}`;
+  return `${V_BASE64}.${toBase64Url(new TextEncoder().encode(text))}`;
+}
+
+/** @returns {string} the format tag of a fragment, or "" when it has none we know. */
+export function formatOf(token) {
+  const version = String(token).replace(/^#/, "").split(".")[0];
+  return VERSIONS.includes(version) ? version : "";
 }
 
 /** @returns {Promise<string>} the fragment token, without the leading `#`. */
@@ -147,16 +239,20 @@ export async function decode(token) {
   const dot = clean.indexOf(".");
   if (dot < 1) throw new Error("this link does not carry a batch.");
   const version = clean.slice(0, dot);
-  if (version !== V_PLAIN && version !== V_DEFLATE) {
+  if (!VERSIONS.includes(version)) {
     throw new Error(`unknown batch format "${version.slice(0, 8)}".`);
   }
   if (version === V_DEFLATE && typeof DecompressionStream !== "function") {
     throw new Error("this browser cannot read compressed batches.");
   }
 
+  const body = clean.slice(dot + 1);
+  if (version === V_URI) return fromListText(decodeUriLoose(body));
+
   let payload;
   try {
-    const bytes = fromBase64Url(clean.slice(dot + 1));
+    if (version === V_BASE64) return fromListText(new TextDecoder().decode(fromBase64Any(body)));
+    const bytes = fromBase64Url(body);
     const raw = version === V_PLAIN ? bytes : await pipe(bytes, new DecompressionStream("deflate-raw"));
     payload = JSON.parse(new TextDecoder().decode(raw));
   } catch {

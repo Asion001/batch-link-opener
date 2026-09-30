@@ -1,9 +1,10 @@
-import { parseLines, buildPayload, encode, decode, expandPayload } from "/assets/codec.js";
+import { parseLines, buildPayload, encode, encodeList, formatOf, decode, expandPayload } from "/assets/codec.js";
 
 const els = {
   input: document.getElementById("input"),
   title: document.getElementById("title"),
   dedupe: document.getElementById("dedupe"),
+  encoding: document.getElementById("encoding"),
   status: document.getElementById("status"),
   preview: document.getElementById("preview"),
   out: document.getElementById("out"),
@@ -58,7 +59,9 @@ async function render() {
     return;
   }
 
-  const fragment = await encode(buildPayload({ title: els.title.value, items }));
+  const batch = { title: els.title.value, items };
+  const format = els.encoding.value;
+  const fragment = format === "v1" ? await encode(buildPayload(batch)) : encodeList(batch, format);
   if (token !== renderToken) return;
 
   const url = `${location.origin}/open#${fragment}`;
@@ -82,7 +85,7 @@ els.copy.addEventListener("click", async () => {
 });
 
 for (const el of [els.input, els.title]) el.addEventListener("input", render);
-els.dedupe.addEventListener("change", render);
+for (const el of [els.dedupe, els.encoding]) el.addEventListener("change", render);
 
 // A batch link dropped on the editor loads back into the textarea, so an
 // existing batch can be edited and re-shared.
@@ -91,6 +94,9 @@ async function loadFromHash() {
   try {
     const { title, items } = expandPayload(await decode(location.hash));
     els.title.value = title;
+    // A plain-list link stays a plain-list link when it is edited and re-shared.
+    const format = formatOf(location.hash);
+    if ([...els.encoding.options].some((option) => option.value === format)) els.encoding.value = format;
     els.input.value = items.map((item) => (item.label ? `${item.label} ${item.url}` : item.url)).join("\n");
     return true;
   } catch {
