@@ -100,7 +100,7 @@ label.field > span {
   color: var(--muted);
 }
 
-textarea, input[type="text"] {
+textarea, input[type="text"], select {
   width: 100%;
   padding: 11px 12px;
   border: 1px solid var(--border-strong);
@@ -118,7 +118,7 @@ textarea {
   line-height: 1.6;
   tab-size: 2;
 }
-textarea:focus, input:focus, button:focus-visible, a:focus-visible {
+textarea:focus, input:focus, select:focus, button:focus-visible, a:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }

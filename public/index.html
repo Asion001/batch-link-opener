@@ -36,6 +36,14 @@ api — https://gitlab.com/acme/api/-/merge_requests/318"></textarea>
         <span>Batch name <span class="optional">(optional)</span></span>
         <input type="text" id="title" placeholder="Release 24.9" maxlength="120">
       </label>
+      <label class="field flush">
+        <span>Encoding</span>
+        <select id="encoding">
+          <option value="v1" selected>Compressed</option>
+          <option value="b1">Base64 list</option>
+          <option value="u1">URL-encoded list</option>
+        </select>
+      </label>
       <label class="check"><input type="checkbox" id="dedupe" checked> Skip duplicate links</label>
     </div>
 
